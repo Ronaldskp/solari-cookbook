@@ -36,18 +36,16 @@ export async function openRecordedSession(solari: Solari): Promise<RecordedSessi
   } catch (error) {
     throw new ChaosLensError("BROWSER_CREATE", `failed to launch Solari browser: ${String(error)}`, error)
   }
-  const context = browser.contexts()[0]
-  if (!context) {
-    await browser.close().catch(() => {})
-    throw new ChaosLensError("BROWSER_CREATE", "browser session has no default context")
-  }
   let page
   try {
-    page = await context.newPage()
+    // newPage() is the reliable path (verified in the Phase-0 smoke gate):
+    // sessions do not always expose a default context immediately.
+    page = await browser.newPage()
   } catch (error) {
     await browser.close().catch(() => {})
     throw new ChaosLensError("BROWSER_CREATE", `failed to open page: ${String(error)}`, error)
   }
+  const context = page.context()
   log.verbose(`browser session ${browser.id} (recording: true)`)
   return { browser, sessionId: browser.id, context, page }
 }

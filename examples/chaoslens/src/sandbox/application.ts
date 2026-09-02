@@ -91,6 +91,18 @@ export class SandboxApplication {
     return this.serverLogChunks.join("")
   }
 
+  /** Stop the application process (best-effort) before the sandbox is killed. */
+  async stop(): Promise<void> {
+    const handle = this.appHandle
+    this.appHandle = undefined
+    if (!handle) return
+    try {
+      await handle.kill()
+    } catch {
+      // the sandbox kill that follows is authoritative
+    }
+  }
+
   /** Resolve (or re-resolve after revert) the public preview URL. */
   async refreshPreviewUrl(): Promise<string> {
     try {

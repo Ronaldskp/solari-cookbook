@@ -24,6 +24,26 @@ import type {
 
 const DEFAULT_ASSERTION_TIMEOUT_MS = 10_000
 
+/**
+ * Teardown races: destroying the remote VM can surface async control-channel
+ * close errors after our own cleanup already finished. Record them (they go
+ * into audit-result.json) instead of letting them crash the process.
+ */
+const teardownEvents: string[] = []
+let teardownGuardInstalled = false
+function installTeardownGuard(): void {
+  if (teardownGuardInstalled) return
+  teardownGuardInstalled = true
+  process.on("uncaughtException", (error) => {
+    teardownEvents.push(redact(String(error?.stack ?? error)))
+    console.error(redact(`[teardown race] uncaught: ${String(error)}`))
+  })
+  process.on("unhandledRejection", (reason) => {
+    teardownEvents.push(redact(String(reason)))
+    console.error(redact(`[teardown race] unhandled rejection: ${String(reason)}`))
+  })
+}
+
 export interface AuditOptions {
   config: ChaosLensConfig
   outputRoot: string
@@ -140,6 +160,7 @@ async function runScenario(
 
 /** Execute a full ChaosLens audit against real Solari (Spec §6). */
 export async function runAudit(options: AuditOptions): Promise<{ result: AuditResult; runDir: string }> {
+  installTeardownGuard()
   const { config } = options
   const runId = new Date().toISOString().replace(/[:.]/g, "-")
   const runDir = path.join(options.outputRoot, runId)
@@ -156,11 +177,12 @@ export async function runAudit(options: AuditOptions): Promise<{ result: AuditRe
   let replayMissingForValidScenario = false
   let auditError: string | null = null
   let sandbox
+  let app: SandboxApplication | undefined
 
   try {
     sandbox = await createAuditSandbox(client, config)
     const appDir = await cloneRepository(sandbox, config)
-    const app = new SandboxApplication(sandbox, config, appDir)
+    app = new SandboxApplication(sandbox, config, appDir)
 
     const installLog = await app.install()
     writeFileSync(path.join(runDir, "install.log"), redact(installLog))
@@ -222,6 +244,11 @@ export async function runAudit(options: AuditOptions): Promise<{ result: AuditRe
     if (baselineStatus === "PASS") baselineStatus = "ERROR"
     log.error(`audit aborted at ${stage}: ${messageOf(error)}`)
   } finally {
+    // Stop the streamed application process FIRST so its command handle does
+    // not fault when the sandbox control channel closes.
+    if (app) {
+      await app.stop().catch(() => {})
+    }
     if (sandbox) {
       try {
         await sandbox.kill()
@@ -252,7 +279,9 @@ export async function runAudit(options: AuditOptions): Promise<{ result: AuditRe
     scoreState,
   }
 
-  writeFileSync(path.join(runDir, "audit-result.json"), JSON.stringify(redactDeep(result), null, 2))
+  const resultJson: Record<string, unknown> = { ...(redactDeep(result) as unknown as Record<string, unknown>) }
+  if (teardownEvents.length > 0) resultJson["teardownEvents"] = teardownEvents
+  writeFileSync(path.join(runDir, "audit-result.json"), JSON.stringify(resultJson, null, 2))
   const reportPath = path.join(runDir, "report.html")
   writeFileSync(reportPath, generateReport(result, runDir))
 

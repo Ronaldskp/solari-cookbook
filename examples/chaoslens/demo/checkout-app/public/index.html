@@ -131,7 +131,8 @@
         orderState = "success";
         spinner.classList.add("hidden");
         success.classList.remove("hidden");
-        placeOrderBtn.disabled = true;
+        // Re-submissions after success are guarded in the handler (the shared
+        // ChaosLens flow performs a deterministic second click).
         return;
       }
       // ENGINEERED VULNERABILITY (demo): HTTP error responses are ignored.

@@ -30,9 +30,11 @@ interface RequestTiming {
 
 const DEFAULT_STEP_TIMEOUT_MS = 15_000
 
-function resolveStepUrl(baseUrl: string, path: string): string {
-  if (/^https?:\/\//.test(path)) return path
-  return `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? "" : "/"}${path}`
+function resolveStepUrl(baseUrl: string, stepPath: string): string {
+  if (/^https?:\/\//.test(stepPath)) return stepPath
+  // Preserve the preview URL's auth query (e.g. pt_token) when resolving.
+  const base = new URL(baseUrl)
+  return `${base.origin}${stepPath.startsWith("/") ? "" : "/"}${stepPath}${base.search}`
 }
 
 async function executeStep(page: Page, baseUrl: string, step: FlowStep, timeoutMs: number): Promise<void> {
