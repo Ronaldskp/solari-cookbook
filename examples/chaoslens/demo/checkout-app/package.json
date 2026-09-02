@@ -1,0 +1,8 @@
+{
+  "name": "chaoslens-demo-checkout",
+  "private": true,
+  "description": "Minimal demo checkout audited by ChaosLens. Engineered resilience profile: fails on HTTP 500 and duplicate submission under latency, handles offline gracefully.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

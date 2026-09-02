@@ -27,13 +27,13 @@ function parseDotEnv(raw: string): Record<string, string> {
 /**
  * Resolve the Solari API key: `process.env.SOLARI_API_KEY` first, then a
  * `.env` file next to the ChaosLens package. Fails loudly — there is no mock
- * fallback path (Spec §24, AC-02).
+ * fallback path (Spec §24, AC-02). `dotEnvPath` is injectable for tests.
  */
-export function requireSolariApiKey(): string {
+export function requireSolariApiKey(dotEnvPath?: string): string {
   const fromEnv = process.env["SOLARI_API_KEY"]
   if (fromEnv && fromEnv.trim() !== "") return fromEnv.trim()
 
-  const envPath = path.join(PACKAGE_ROOT, ".env")
+  const envPath = dotEnvPath ?? path.join(PACKAGE_ROOT, ".env")
   if (existsSync(envPath)) {
     const fromFile = parseDotEnv(readFileSync(envPath, "utf8"))["SOLARI_API_KEY"]
     if (fromFile && fromFile.trim() !== "") return fromFile.trim()

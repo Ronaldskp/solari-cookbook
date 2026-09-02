@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo Checkout</title>
+<style>
+  :root { --bg:#f6f8fb; --card:#ffffff; --ink:#17233a; --muted:#61708a; --brand:#2f6bff; --line:#e3e9f2; --ok:#1a7f37; --bad:#c62d2d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:14px 24px; display:flex; justify-content:space-between; align-items:center; }
+  header .logo { font-weight:700; font-size:17px; }
+  header .cart { color:var(--muted); font-size:14px; }
+  main { max-width:760px; margin:32px auto; padding:0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:24px; margin-bottom:18px; }
+  h1 { font-size:21px; margin:0 0 6px; }
+  p.sub { margin:0 0 18px; color:var(--muted); font-size:14px; }
+  .row { display:flex; gap:16px; align-items:center; }
+  .price { font-size:20px; font-weight:700; }
+  button { background:var(--brand); color:#fff; border:none; border-radius:8px; padding:11px 18px; font-size:14.5px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.55; cursor:default; }
+  label { display:block; font-size:13px; color:var(--muted); margin:14px 0 4px; }
+  input { width:100%; padding:10px 12px; font-size:14.5px; border:1px solid var(--line); border-radius:8px; }
+  .hidden { display:none !important; }
+  .banner { border-radius:10px; padding:12px 16px; font-size:14px; margin-top:16px; }
+  .banner-error { background:#fdecec; color:var(--bad); border:1px solid #f5c2c2; }
+  .banner-offline { background:#fff4e0; color:#8a5b00; border:1px solid #f0d7a0; }
+  .banner-success { background:#e7f6ec; color:var(--ok); border:1px solid #bce3c8; }
+  .spinner { display:inline-block; width:16px; height:16px; border:2.5px solid #cdd8ea; border-top-color:var(--brand); border-radius:50%; animation:spin .8s linear infinite; vertical-align:-3px; margin-right:8px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .status { margin-top:16px; font-size:14.5px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Aurora Supply Co.</div>
+  <div class="cart">Cart: <span data-testid="cart-count">0</span></div>
+</header>
+<main>
+  <!-- Product -->
+  <section class="card" data-testid="product-view">
+    <h1>Aurora Desk Lamp</h1>
+    <p class="sub">Warm dimmable LED &middot; USB-C &middot; 2-year warranty</p>
+    <div class="row">
+      <div class="price">$49.00</div>
+      <button data-testid="add-to-cart">Add to Cart</button>
+    </div>
+  </section>
+
+  <!-- Cart / Checkout entry -->
+  <section class="card hidden" data-testid="cart-view">
+    <h1>Your Cart</h1>
+    <p class="sub">Aurora Desk Lamp &times; 1 &mdash; $49.00</p>
+    <button data-testid="go-checkout">Checkout</button>
+  </section>
+
+  <!-- Checkout -->
+  <section class="card hidden" data-testid="checkout-view">
+    <h1>Customer Details</h1>
+    <p class="sub">Demo store &mdash; all data is synthetic.</p>
+
+    <label for="email">Email</label>
+    <input id="email" data-testid="email" type="email" autocomplete="off">
+
+    <label for="address">Shipping address</label>
+    <input id="address" data-testid="address" type="text" autocomplete="off">
+
+    <div style="margin-top:20px">
+      <button data-testid="place-order">Place Order</button>
+    </div>
+
+    <div class="status">
+      <span data-testid="order-spinner" class="hidden"><span class="spinner"></span>Placing your order&hellip;</span>
+
+      <div data-testid="order-success" class="banner banner-success hidden">
+        Thank you for your order! A confirmation was sent to your email.
+      </div>
+
+      <div data-testid="order-error" class="banner banner-error hidden">
+        We could not place your order. Please try again.
+      </div>
+
+      <div data-testid="offline-error" class="banner banner-offline hidden">
+        Connection lost. Your details are preserved &mdash; please retry when you are back online.
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const views = {
+    product: document.querySelector('[data-testid="product-view"]'),
+    cart: document.querySelector('[data-testid="cart-view"]'),
+    checkout: document.querySelector('[data-testid="checkout-view"]'),
+  };
+  const spinner = document.querySelector('[data-testid="order-spinner"]');
+  const success = document.querySelector('[data-testid="order-success"]');
+  const orderError = document.querySelector('[data-testid="order-error"]');
+  const offlineError = document.querySelector('[data-testid="offline-error"]');
+  const placeOrderBtn = document.querySelector('[data-testid="place-order"]');
+  let orderState = "idle"; // idle | success
+
+  document.querySelector('[data-testid="add-to-cart"]').addEventListener("click", () => {
+    document.querySelector('[data-testid="cart-count"]').textContent = "1";
+    views.product.classList.add("hidden");
+    views.cart.classList.remove("hidden");
+  });
+
+  document.querySelector('[data-testid="go-checkout"]').addEventListener("click", () => {
+    views.cart.classList.add("hidden");
+    views.checkout.classList.remove("hidden");
+  });
+
+  placeOrderBtn.addEventListener("click", async () => {
+    if (orderState === "success") return;
+    spinner.classList.remove("hidden");
+    success.classList.add("hidden");
+    orderError.classList.add("hidden");
+    offlineError.classList.add("hidden");
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          items: ["aurora-desk-lamp"],
+          email: document.querySelector('[data-testid="email"]').value,
+          address: document.querySelector('[data-testid="address"]').value,
+        }),
+      });
+      if (res.ok) {
+        orderState = "success";
+        spinner.classList.add("hidden");
+        success.classList.remove("hidden");
+        placeOrderBtn.disabled = true;
+        return;
+      }
+      // ENGINEERED VULNERABILITY (demo): HTTP error responses are ignored.
+      // The spinner keeps spinning forever and no error message is shown,
+      // which ChaosLens reports as a FAIL under the HTTP 500 scenario.
+    } catch (err) {
+      // Network failure (e.g. offline): graceful feedback, form preserved.
+      spinner.classList.add("hidden");
+      offlineError.classList.remove("hidden");
+    }
+    // ENGINEERED VULNERABILITY (demo): the button is never disabled while a
+    // request is pending, so repeated clicks send duplicate checkouts —
+    // ChaosLens reports this as a FAIL under the latency scenario.
+  });
+</script>
+</body>
+</html>
