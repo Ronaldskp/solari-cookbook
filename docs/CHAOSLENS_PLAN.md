@@ -126,8 +126,9 @@ examples/chaoslens/
 - `git.clone(repo, { branch: ref, path })`; run configured install command (`commands.run`, capture output).
 - Start app with `commands.start` (background handle); stream stdout+stderr through the redactor into in-memory ring → persisted as `server.log` per scenario.
 - Health: `previewUrl(port)`, poll health path from local machine until `READY` or `TIMEOUT` (bounded, ~60s).
-- Snapshot after healthy baseline state; after every scenario: `revert(snapshotId)` → re-fetch `previewUrl` → re-run health check → only proceed when HEALTHY, else infrastructure `ERROR`. If revert leaves the app process unresponsive, one documented restart-then-rehealth attempt before ERROR.
-- `kill()` in `finally` on every path.
+- Snapshot after healthy baseline state.
+- **Clean-state restore between scenarios — AMENDED (see `docs/SPEC_AMENDMENT_REQUIRED.md`):** in-place `revert()` is rejected by the live gateway (`409 Not revertable`; `pause()` → `404`) for this account's pool sessions. ChaosLens instead destroys the dirty sandbox and boots a fresh one from the ready snapshot (`fromSnapshot`), then re-fetches `previewUrl` and re-runs the health check. Verified: disk + running app process restored. Every scenario still starts from the same proven-clean snapshot. Only proceed when HEALTHY, else infrastructure `ERROR`.
+- `kill()` in `finally` on every path; application stream stopped before sandbox kill (avoids control-channel teardown faults).
 
 **Validation:** unit tests around state machine with mocked SDK boundary; real behavior proven in Phase 11.
 

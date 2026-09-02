@@ -14,7 +14,7 @@ import { generateReport } from "./report/html.js"
 import { classifyScenario, computeScore } from "./report/model.js"
 import { createAuditSandbox, cloneRepository } from "./sandbox/create.js"
 import { SandboxApplication } from "./sandbox/application.js"
-import { revertToReadyState, snapshotReadyState } from "./sandbox/snapshot.js"
+import { restoreCleanState, snapshotReadyState, type RestoredState } from "./sandbox/snapshot.js"
 import type {
   AuditResult,
   ChaosLensConfig,
@@ -176,13 +176,13 @@ export async function runAudit(options: AuditOptions): Promise<{ result: AuditRe
   let baselineReason: string | null = null
   let replayMissingForValidScenario = false
   let auditError: string | null = null
-  let sandbox
-  let app: SandboxApplication | undefined
+  let state: RestoredState | undefined
 
   try {
-    sandbox = await createAuditSandbox(client, config)
+    const sandbox = await createAuditSandbox(client, config)
     const appDir = await cloneRepository(sandbox, config)
-    app = new SandboxApplication(sandbox, config, appDir)
+    const app = new SandboxApplication(sandbox, config, appDir)
+    state = { sandbox, app }
 
     const installLog = await app.install()
     writeFileSync(path.join(runDir, "install.log"), redact(installLog))
@@ -218,8 +218,8 @@ export async function runAudit(options: AuditOptions): Promise<{ result: AuditRe
     if (baselineStatus === "PASS") {
       log.heading("Reliability scenarios")
       for (const scenario of config.scenarios.filter((s) => s.fault !== null)) {
-        await revertToReadyState(sandbox, app, snapshotId)
-        const outcome = await runScenario(solari, app, config, scenario, runDir, runId)
+        state = await restoreCleanState(client, config, state, snapshotId)
+        const outcome = await runScenario(solari, state.app, config, scenario, runDir, runId)
         scenarioResults.push(outcome.result)
         if (outcome.replayMissing && outcome.result.status !== "ERROR") {
           replayMissingForValidScenario = true
@@ -246,12 +246,10 @@ export async function runAudit(options: AuditOptions): Promise<{ result: AuditRe
   } finally {
     // Stop the streamed application process FIRST so its command handle does
     // not fault when the sandbox control channel closes.
-    if (app) {
-      await app.stop().catch(() => {})
-    }
-    if (sandbox) {
+    if (state) {
+      await state.app.stop().catch(() => {})
       try {
-        await sandbox.kill()
+        await state.sandbox.kill()
         log.verbose("sandbox killed")
       } catch (error) {
         log.verbose(`sandbox kill failed: ${messageOf(error)}`)
