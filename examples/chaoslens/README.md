@@ -7,7 +7,17 @@ in a real Solari Sandbox, drives a critical user flow in a real Solari Browser,
 deliberately breaks the backend (HTTP 500, slow responses, offline), and turns
 what the user actually experiences into deterministic, evidence-backed verdicts.
 
-![ChaosLens demo report](docs/report-screenshot.png)
+![HTTP 500 scenario — what the user sees: the spinner never terminates](docs/demo-screenshot.png)
+
+*Real acceptance evidence — HTTP 500 scenario: the injected 500 is ignored by
+the app, the spinner keeps spinning, no error is shown. Verdict: FAIL.*
+
+![Offline scenario — graceful offline banner, form state preserved](docs/offline-pass-screenshot.png)
+
+*Real acceptance evidence — Offline scenario: connection lost, the app shows an
+offline banner and preserves the entered details. Verdict: PASS.*
+
+The full HTML report lives at `artifacts/<run-id>/report.html`.
 
 ```text
 Baseline      PASS

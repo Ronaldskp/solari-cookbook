@@ -316,15 +316,15 @@ All form data synthetic (`demo@example.com`, `123 Test Street`); no real PII/pas
 | Phase | Status |
 | --- | --- |
 | Phase 0 — Smoke Gate | IN_PROGRESS — 8/9 PASS; Recording/Replay blocked server-side (evidence above) |
-| Phase 1 — Skeleton & Config | TODO |
-| Phase 2 — Sandbox Runtime | TODO |
-| Phase 3 — Browser Flow Engine | TODO |
-| Phase 4 — Fault Injection | TODO |
-| Phase 5 — Assertions & Verdict | TODO |
-| Phase 6 — Evidence Collection | TODO |
-| Phase 7 — Demo Checkout App | TODO |
-| Phase 8 — HTML Report | TODO |
-| Phase 9 — Error/Security/Cleanup | TODO |
-| Phase 10 — Tests | TODO |
-| Phase 11 — Real Solari Acceptance | TODO |
-| Phase 12 — README / Report | TODO |
+| Phase 1 — Skeleton & Config | PASS — strict TS skeleton, runtime-validated config, fail-fast errors; config tests green |
+| Phase 2 — Sandbox Runtime | PASS — clone/install/start/health/preview/snapshot/cleanup; restore amended to `fromSnapshot` (gateway rejects in-place revert; see `docs/SPEC_AMENDMENT_REQUIRED.md`) |
+| Phase 3 — Browser Flow Engine | PASS — deterministic steps incl. `wait`; fresh recorded session per run; release/wait/poll teardown |
+| Phase 4 — Fault Injection | PASS — http-500/latency/offline with activation accounting; unactivated fault ⇒ ERROR |
+| Phase 5 — Assertions & Verdict | PASS — 6 assertion types, strict PASS/FAIL/ERROR classification, score formula, baseline gate, INCONCLUSIVE |
+| Phase 6 — Evidence Collection | PASS — full redacted bundle per scenario incl. replay-url reference |
+| Phase 7 — Demo Checkout App | PASS — zero-dependency demo; engineered FAIL/FAIL/PASS pattern verified in real runs |
+| Phase 8 — HTML Report | PASS — self-contained report, embedded screenshots, PASS/FAIL/ERROR distinction, BLOCKED/INCONCLUSIVE banners |
+| Phase 9 — Error/Security/Cleanup | PASS — staged errors, log/artifact redaction, finally-cleanup, AC-02 startup failure |
+| Phase 10 — Tests | PASS — 60 tests green (`npm test`), `npm run build` green |
+| Phase 11 — Real Solari Acceptance | PASS (with documented replay caveat) — six real runs; verdicts baseline PASS / 500 FAIL / latency FAIL / offline PASS reproduced three times; replay retrieval intermittently unavailable server-side (1 real replay captured); audits report INCONCLUSIVE per Spec §24 while it is down |
+| Phase 12 — README / Report | PASS — README with real evidence screenshots; `docs/CHAOSLENS_IMPLEMENTATION_REPORT.md` finalized (READY_FOR_CODE_REVIEW) |

@@ -19,7 +19,15 @@ export interface ReplayOutcome {
 }
 
 export const REPLAY_POLL_INTERVAL_MS = 3000
-export const REPLAY_POLL_WINDOW_MS = 36_000 // spec: at least 30s
+/**
+ * Spec §24: poll replay retrieval for AT LEAST 30 seconds. The window can be
+ * widened via CHAOSLENS_REPLAY_POLL_WINDOW_MS (ms) when the upload pipeline
+ * is slow; values below 30s are rejected.
+ */
+export const REPLAY_POLL_WINDOW_MS = (() => {
+  const fromEnv = Number(process.env["CHAOSLENS_REPLAY_POLL_WINDOW_MS"])
+  return Number.isInteger(fromEnv) && fromEnv >= 30_000 ? fromEnv : 36_000
+})()
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
