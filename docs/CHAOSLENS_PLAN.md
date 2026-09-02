@@ -51,7 +51,31 @@ Sandbox PASS, Runtime PASS, Preview URL PASS, Browser PASS, Browser→Preview PA
 Screenshot PASS, Recording PASS, Replay Retrieval PASS, Cleanup PASS
 ```
 
-**Status:** `BLOCKED` — `SOLARI_API_KEY` missing (env var, user/system registry, sibling `.env` all checked). Waiting for credential provisioning; nothing is mocked or forged in the meantime.
+**Status:** `IN_PROGRESS — 8/9 PASS, Recording/Replay BLOCKED (server-side)`
+
+Executed 2026-09-02 against the real account (`npm run smoke`, `scripts/diagnose-replay*.ts`):
+
+| Smoke | Result | Evidence |
+| --- | --- | --- |
+| Smoke-01 Sandbox | PASS | sandbox created (`base` template), connected |
+| Smoke-02 Runtime | PASS | node/npm/python3/git versions captured |
+| Smoke-03 Minimal server | PASS | `commands.start` background process + `/health` OK (initial quote-escaping implementation bug fixed and re-run) |
+| Smoke-04 Preview URL | PASS | `previewUrl(port)` signed URL fetched locally, HTTP 200; pt_token redacted |
+| Smoke-05 Browser → Preview | PASS | real browser opened sandbox preview |
+| Smoke-06 Screenshot | PASS | PNG saved |
+| Smoke-07 Recording + Replay | **FAIL** | see blocker evidence below |
+| Smoke-08 Cleanup | PASS | browsers released, sandbox killed (incl. on failure paths) |
+
+**Smoke-07 blocker evidence (real service, not mocked):**
+
+- Five sessions created with `recording: true` (accepted `201`), real browsing performed in each, each closed + released. `GET /sessions/:id` confirms `"status":"released"` for all.
+- `GET /sessions/:id/replay-url` returns `404 {"error":"No replay available for this session"}` persistently — from 3s up to 10+ minutes after release; re-probing hours later still 404.
+- Variants eliminated: (a) SDK launch path with loopback proxy; (b) `sessions.create()` path; (c) raw `POST /sessions` + direct `chromium.connect(wss://api.getsolari.com/ws/…)` with no local proxy at all; (d) short vs busy 10s sessions. All identical 404.
+- Usage matches official docs + cookbook example exactly (`recording: true` → browse → `close()`/`releaseAndWait` → poll replay; 404 treated as PROCESSING within ≥30s window).
+- Not an upload-latency issue (earlier sessions stay 404 on re-probe).
+- Context: Solari service deployed changes on Sep 1–2, 2026 touching session recording and session status reporting (changelog.getsolari.com). Sessions report `kind:"fast"`.
+
+Classification per master prompt §7: NOT an implementation bug, NOT an SDK usage problem → **real environment blocker** (service/account level). Recording/Replay is parked and re-verified before Phase 11; all other work continues (§33 "其他部分继续实现"). `SPEC_AMENDMENT_REQUIRED.md` is deferred because this is not yet proven to be a permanent SDK limitation (likely transient post-deploy regression or account-level flag); if replay is still absent at Phase 11, the amendment doc will be produced with this evidence.
 
 ---
 
@@ -290,7 +314,7 @@ All form data synthetic (`demo@example.com`, `123 Test Street`); no real PII/pas
 
 | Phase | Status |
 | --- | --- |
-| Phase 0 — Smoke Gate | BLOCKED (`SOLARI_API_KEY` missing) |
+| Phase 0 — Smoke Gate | IN_PROGRESS — 8/9 PASS; Recording/Replay blocked server-side (evidence above) |
 | Phase 1 — Skeleton & Config | TODO |
 | Phase 2 — Sandbox Runtime | TODO |
 | Phase 3 — Browser Flow Engine | TODO |

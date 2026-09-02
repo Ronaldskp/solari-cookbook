@@ -12,10 +12,25 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { SolariClient, Sandbox } from "@solarisdk/sdk"
+import { SolariClient, Sandbox, type CommandHandle } from "@solarisdk/sdk"
 import { Solari, SolariError, BrowserSession } from "@solarisdk/browser"
 import { requireSolariApiKey } from "../src/env.js"
 import { redact, redactDeep } from "../src/redact.js"
+
+/**
+ * Teardown races: when the remote VM dies, the control channel can emit an
+ * async close error after our own cleanup already finished. Never let that
+ * kill the process silently — log it and include it in the transcript.
+ */
+const teardownEvents: string[] = []
+process.on("uncaughtException", (error) => {
+  teardownEvents.push(redact(String(error?.stack ?? error)))
+  console.error(`[teardown race] uncaught: ${redact(String(error))}`)
+})
+process.on("unhandledRejection", (reason) => {
+  teardownEvents.push(redact(String(reason)))
+  console.error(`[teardown race] unhandled rejection: ${redact(String(reason))}`)
+})
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const SMOKE_PORT = 4173
@@ -23,6 +38,17 @@ const SMOKE_PORT = 4173
 /** Minimal Node HTTP server written into the sandbox for Smoke-03. */
 const SMOKE_SERVER_JS = `
 const http = require("node:http");
+const PAGE =
+  "<!doctype html><html><head><title>ChaosLens Smoke</title></head><body>" +
+  '<h1 id="title">Solari smoke server</h1>' +
+  '<button id="ping">Ping</button>' +
+  '<p id="out"></p>' +
+  "<script>" +
+  'document.getElementById("ping").addEventListener("click", function () {' +
+  '  document.getElementById("out").textContent = "pong";' +
+  "});" +
+  "</script>" +
+  "</body></html>";
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
@@ -30,12 +56,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   res.writeHead(200, { "content-type": "text/html" });
-  res.end(
-    "<!doctype html><html><head><title>ChaosLens Smoke</title></head>" +
-    '<body><h1 id="title">Solari smoke server</h1>' +
-    '<button id="ping" onclick="document.getElementById(\'out\').textContent=\'pong\'">Ping</button>' +
-    '<p id="out"></p></body></html>',
-  );
+  res.end(PAGE);
 });
 server.listen(${SMOKE_PORT}, "0.0.0.0", () => console.log("smoke server listening on ${SMOKE_PORT}"));
 `.trim()
@@ -76,6 +97,7 @@ async function main(): Promise<number> {
   let previewUrl = ""
   let aborted = false
   let browserReleases = 0
+  let smokeServer: CommandHandle | undefined
 
   try {
     // ── Smoke-01 — Sandbox ──────────────────────────────────────────────
@@ -134,6 +156,7 @@ async function main(): Promise<number> {
           onStdout: (d) => serverLog.push(d),
           onStderr: (d) => serverLog.push(d),
         })
+        smokeServer = handle
         await sleep(2000)
         const probe = await sandbox.commands.run("node", {
           args: [
@@ -248,21 +271,30 @@ async function main(): Promise<number> {
           // close() already released; releaseAndWait confirms when available
         }
 
-        // Replay upload is async after release: poll >= 30s, 404 = PROCESSING.
+        // Replay upload is async after release: poll >= 30s (we poll 60s),
+        // 404 = PROCESSING. Cookbook pattern polls downloadReplay directly.
         let replayOk = false
         const attempts: string[] = []
-        for (let attempt = 1; attempt <= 12; attempt++) {
+        for (let attempt = 1; attempt <= 20; attempt++) {
           await sleep(3000)
           try {
-            const { url, expiresInSeconds } = await solari.sessions.getReplayUrl(sessionId)
             const blob = await solari.sessions.downloadReplay(sessionId)
             writeFileSync(path.join(runDir, "replay.ndjson"), blob)
-            attempts.push(`attempt ${attempt}: OK`)
+            let replayUrl = ""
+            let expiresInSeconds: number | undefined
+            try {
+              const meta = await solari.sessions.getReplayUrl(sessionId)
+              replayUrl = redact(meta.url)
+              expiresInSeconds = meta.expiresInSeconds
+            } catch {
+              // bytes are the required evidence; the presigned URL is a bonus
+            }
+            attempts.push(`attempt ${attempt}: OK (${blob.length} bytes)`)
             record("Smoke-07", "Recording + Replay", true, {
               sessionId,
               attempts,
-              replayUrl: redact(url),
-              expiresInSeconds,
+              ...(replayUrl ? { replayUrl } : {}),
+              ...(expiresInSeconds !== undefined ? { expiresInSeconds } : {}),
               replayBytes: blob.length,
               note: "404 during polling window treated as PROCESSING, not error",
             })
@@ -273,7 +305,11 @@ async function main(): Promise<number> {
               attempts.push(`attempt ${attempt}: 404 (PROCESSING)`)
               continue
             }
-            attempts.push(`attempt ${attempt}: ${redact(String(error))}`)
+            const detail =
+              error instanceof SolariError
+                ? `status=${error.status} code=${error.code ?? "?"} ${error.message}`
+                : String(error)
+            attempts.push(`attempt ${attempt}: ${redact(detail)}`)
             break
           }
         }
@@ -297,6 +333,15 @@ async function main(): Promise<number> {
     // ── Smoke-08 — Cleanup (always, even after failures) ─────────────
     let sandboxKilled = false
     let cleanupError: string | undefined
+    // Stop the still-running smoke server FIRST so its streamed command
+    // handle doesn't fault when the sandbox control channel closes.
+    if (smokeServer) {
+      try {
+        await smokeServer.kill()
+      } catch {
+        // best-effort; the VM kill below is authoritative
+      }
+    }
     try {
       if (sandbox) {
         await sandbox.kill()
@@ -324,6 +369,7 @@ async function main(): Promise<number> {
     finishedAt: new Date().toISOString(),
     gate: results.every((r) => r.pass) && results.length === 8 ? "PASS" : "FAIL",
     results,
+    ...(teardownEvents.length > 0 ? { teardownEvents } : {}),
   }
   const outPath = path.join(runDir, "smoke-result.json")
   writeFileSync(outPath, JSON.stringify(redactDeep(summary), null, 2))
@@ -333,4 +379,7 @@ async function main(): Promise<number> {
 }
 
 const exitCode = await main()
-process.exit(exitCode)
+process.exitCode = exitCode
+// Give WS handles a moment to finish their close handshake; a hard
+// process.exit() here trips a libuv assertion on Windows.
+await new Promise((resolve) => setTimeout(resolve, 500))
