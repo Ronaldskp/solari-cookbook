@@ -8,10 +8,11 @@ interface ElementState {
   visible: boolean
   disabled: boolean
   text: string
+  inputValue: string | null
 }
 
 function fakePage(state: Partial<ElementState>, selectorThrows = false): Page {
-  const full: ElementState = { count: 1, visible: true, disabled: false, text: "", ...state }
+  const full: ElementState = { count: 1, visible: true, disabled: false, text: "", inputValue: null, ...state }
   const locator = {
     first: () => locator,
     count: async () => {
@@ -20,7 +21,14 @@ function fakePage(state: Partial<ElementState>, selectorThrows = false): Page {
     },
     isVisible: async () => full.visible && full.count > 0,
     isDisabled: async () => full.disabled,
-    innerText: async () => full.text,
+    innerText: async () => {
+      if (full.inputValue !== null) throw new Error("not an innerText element")
+      return full.text
+    },
+    inputValue: async () => {
+      if (full.inputValue === null) throw new Error("not an input element")
+      return full.inputValue
+    },
   }
   return { locator: () => locator } as unknown as Page
 }
@@ -92,6 +100,15 @@ describe("assertion evaluation", () => {
     const page = fakePage({ text: "Thank you for your order!" })
     const { results } = await evaluateAssertions(
       [{ type: "text", selector: "#ok", text: "Thank you", timeoutMs: 50 }],
+      { page, flowCompleted: true, networkEvents: [], defaultTimeoutMs: 50 },
+    )
+    expect(results[0]?.pass).toBe(true)
+  })
+
+  it("text reads form input values (form state preservation checks)", async () => {
+    const page = fakePage({ inputValue: "demo@example.com" })
+    const { results } = await evaluateAssertions(
+      [{ type: "text", selector: "#email", text: "demo@example.com", timeoutMs: 50 }],
       { page, flowCompleted: true, networkEvents: [], defaultTimeoutMs: 50 },
     )
     expect(results[0]?.pass).toBe(true)

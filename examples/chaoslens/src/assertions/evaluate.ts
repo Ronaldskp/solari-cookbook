@@ -80,8 +80,14 @@ async function evaluateOne(
       await locator.count()
       const needle = assertion.text ?? ""
       let lastText = ""
+      // Form elements expose their state through value, not inner text.
+      const readText = async (): Promise<string> => {
+        const value = await locator.inputValue().catch(() => null)
+        if (value !== null) return value
+        return await locator.innerText().catch(() => "")
+      }
       const pass = await pollUntil(async () => {
-        const text = await locator.innerText().catch(() => "")
+        const text = await readText()
         lastText = text
         return text.includes(needle)
       }, timeoutMs)
