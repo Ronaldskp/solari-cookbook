@@ -1,0 +1,21 @@
+{
+  "name": "solari-chaoslens",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "audit": "tsx src/cli.ts",
+    "smoke": "tsx scripts/smoke-gate.ts",
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@solarisdk/browser": "^0.1.1",
+    "@solarisdk/sdk": "^0.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}
